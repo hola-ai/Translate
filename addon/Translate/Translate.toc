@@ -2,7 +2,7 @@
 ## Title: Translate
 ## Notes: English to Korean chat translation, paired with the Translate companion app.
 ## Author: cherryroots
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\AddOns\Translate\icon
 ## SavedVariables: TranslateDB
 
