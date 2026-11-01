@@ -1,6 +1,6 @@
 local addonName, ns = ...
 
--- Captured Chinese lines, keyed by a running id the companion echoes back.
+-- Captured English lines, keyed by a running id the companion echoes back.
 ns.messages = {}
 ns.translations = {}
 local nextId = 1
@@ -16,9 +16,11 @@ local CHAT_EVENTS = {
     "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER", "CHAT_MSG_CHANNEL",
 }
 
--- CJK Unified Ideographs (U+4E00..U+9FFF) start with UTF-8 lead bytes E4..E9.
-local function HasChinese(text)
-    return text:find("[\228-\233][\128-\191][\128-\191]") ~= nil
+-- Hangul syllables (U+AC00..U+D7A3) start with UTF-8 lead bytes EA..ED, and
+-- compatibility jamo (U+3131..U+318E) with E3 84..86.
+local function HasHangul(text)
+    return text:find("[\234-\237][\128-\191][\128-\191]") ~= nil
+        or text:find("\227[\132-\134][\128-\191]") ~= nil
 end
 
 -- Hyperlinks and color codes would confuse the translator; send plain text.
@@ -27,6 +29,12 @@ local function StripCodes(text)
     text = text:gsub("|c%x%x%x%x%x%x%x%x", "")
     text = text:gsub("|r", "")
     return text
+end
+
+-- Korean lines are already readable, and lines without Latin letters ("1", "?")
+-- have nothing to translate.
+function ns.NeedsTranslation(text)
+    return text:find("%a") ~= nil and not HasHangul(text)
 end
 
 function ns.CopyText(id)
@@ -57,20 +65,25 @@ function ns.ShowLatest()
     ns.ShowMessage(nextId - 1)
 end
 
--- The companion replies with "TR#<id> <english>". Without a prefix the text
+-- The companion replies with "TR#<id> <korean>". Without a prefix the text
 -- belongs to the line currently open in the window.
 function ns.ReceiveTranslation(text, fallbackId)
-    local id, english = text:match("^%s*" .. PREFIX .. "(%d+)%s+(.+)$")
+    local id, korean = text:match("^%s*" .. PREFIX .. "(%d+)%s+(.+)$")
     id = tonumber(id) or fallbackId
-    english = english or text
+    korean = korean or text
     if not id or not ns.messages[id] then
         ns.Print("That translation's line is no longer in history.")
         return
     end
-    ns.translations[id] = english
+    ns.translations[id] = korean
     local author = ns.messages[id].author or "?"
-    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccff[EN]|r " .. author .. ": " .. english)
+    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccff[KO]|r " .. author .. ": " .. korean)
     ns.RefreshResult(id)
+end
+
+-- The channel name is localized, e.g. "2. Trade - City" or "2. 거래 - 도시".
+local function IsTradeChannel(channel)
+    return type(channel) == "string" and (channel:find("거래", 1, true) ~= nil or channel:lower():find("trade", 1, true) ~= nil)
 end
 
 local LABELS = {
@@ -81,17 +94,20 @@ local LABELS = {
     CHAT_MSG_GUILD = "Guild", CHAT_MSG_OFFICER = "Officer",
 }
 
--- Stores a Chinese line once and sends it to the pixel strip. Returns its id,
--- or nil when the line is not Chinese or cannot be read (secret values).
+-- Stores an English line once and sends it to the pixel strip. Returns its id,
+-- or nil when the line is the player's own, needs no translation or cannot be
+-- read (secret values).
 -- Arguments follow the CHAT_MSG_* payload; lineID is the 11th.
 local function Capture(event, msg, author, _, channel, _, _, _, _, _, _, lineID)
     if ns.IsSecret(msg) or ns.IsSecret(author) or ns.IsSecret(channel) or ns.IsSecret(lineID) then
         return nil
     end
-    if type(msg) ~= "string" or not HasChinese(msg) then return nil end
+    if type(msg) ~= "string" or not ns.NeedsTranslation(StripCodes(msg)) then return nil end
+    if event == "CHAT_MSG_CHANNEL" and not ns.db.trade and IsTradeChannel(channel) then return nil end
     if lineID and byLine[lineID] then return byLine[lineID] end
 
     local name = type(author) == "string" and Ambiguate(author, "short") or "?"
+    if name == UnitName("player") then return nil end
     local id = Store(msg, name, lineID)
     local label = LABELS[event]
     if event == "CHAT_MSG_CHANNEL" and type(channel) == "string" and channel ~= "" then
@@ -113,6 +129,23 @@ local function OnLinkClicked(link)
     if type(link) ~= "string" then return end
     local name, id = link:match("^addon:([^:]+):(%d+)")
     if name == addonName then ns.ShowMessage(tonumber(id)) end
+end
+
+-- Sends a line through the strip without saying anything in public chat.
+function ns.SendTestLine(text)
+    local id = Store(text, "Translate test")
+    ns.SendToStrip(id .. "\t" .. "[Test]" .. "\t" .. text)
+end
+
+-- Sends text the player typed after /tr to the companion, marked so it is
+-- translated out of Korean. The translation lands on the clipboard.
+function ns.SendReply(text, lang)
+    if not ns.db.strip then
+        ns.Print("The pixel strip is off, so nothing reaches the companion. /tr strip turns it on.")
+        return
+    end
+    ns.SendToStrip("0\t@reply:" .. lang .. "\t" .. text)
+    ns.Print("Sent. Paste when the overlay shows the translation.")
 end
 
 function ns.InitChat()

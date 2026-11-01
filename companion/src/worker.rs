@@ -6,23 +6,24 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
 
-pub const TEST_LINE: &str = "大家好，今天一起打副本吗？";
+pub const TEST_LINE: &str = "LFM ICC 25 need MT and heals PST";
 
 pub enum Job {
-    /// A Chinese line read from the addon's pixel strip.
+    /// An English line read from the addon's pixel strip.
     Incoming { speaker: String, text: String },
     /// A line copied from the addon window as "TR#<id> <text>".
     Tagged { id: u64, text: String },
-    /// English the player typed in the companion, to send as Chinese.
-    Reply { text: String },
+    /// Korean the player typed, in the companion or as `/tr <text>` in game,
+    /// to send as English or Chinese.
+    Reply { text: String, to: Direction },
     /// The Test model button: a fixed line, never cached.
     Test,
 }
 
 pub enum UiEvent {
-    Line { speaker: String, original: String, english: String },
-    PasteReady { id: u64, english: String },
-    ReplyReady { english: String, chinese: String },
+    Line { speaker: String, original: String, translated: String },
+    PasteReady { id: u64, translated: String },
+    ReplyReady { source: String, translated: String },
     TestResult { result: Result<String, String>, seconds: f32 },
     /// Pixel strip state: searching, or where it was found.
     Strip(String),
@@ -57,16 +58,16 @@ pub fn spawn(config: Arc<Mutex<Config>>, jobs: Receiver<Job>, ui: UiSender, clip
             let config = config.lock().unwrap().clone();
             if let Job::Test = job {
                 let started = Instant::now();
-                let result = translate(&config, TEST_LINE, Direction::ToEnglish);
+                let result = translate(&config, TEST_LINE, Direction::ToKorean);
                 ui.send(UiEvent::TestResult { result, seconds: started.elapsed().as_secs_f32() });
                 continue;
             }
             let (text, direction) = match &job {
-                Job::Incoming { text, .. } | Job::Tagged { text, .. } => (text.clone(), Direction::ToEnglish),
-                Job::Reply { text } => (text.clone(), Direction::ToChinese),
+                Job::Incoming { text, .. } | Job::Tagged { text, .. } => (text.clone(), Direction::ToKorean),
+                Job::Reply { text, to } => (text.clone(), *to),
                 Job::Test => unreachable!("handled above"),
             };
-            let key = format!("{}|{text}", matches!(direction, Direction::ToEnglish));
+            let key = format!("{direction:?}|{text}");
             let result = match cache.get(&key) {
                 Some(hit) => Ok(hit.clone()),
                 None => translate(&config, &text, direction),
@@ -86,15 +87,15 @@ pub fn spawn(config: Arc<Mutex<Config>>, jobs: Receiver<Job>, ui: UiSender, clip
             };
             match job {
                 Job::Incoming { speaker, text } => {
-                    ui.send(UiEvent::Line { speaker, original: text, english: translated })
+                    ui.send(UiEvent::Line { speaker, original: text, translated })
                 }
                 Job::Tagged { id, .. } => {
                     let _ = clipboard.send(format!("TR#{id} {translated}"));
-                    ui.send(UiEvent::PasteReady { id, english: translated });
+                    ui.send(UiEvent::PasteReady { id, translated });
                 }
-                Job::Reply { text } => {
+                Job::Reply { text, .. } => {
                     let _ = clipboard.send(translated.clone());
-                    ui.send(UiEvent::ReplyReady { english: text, chinese: translated });
+                    ui.send(UiEvent::ReplyReady { source: text, translated });
                 }
                 Job::Test => {}
             }

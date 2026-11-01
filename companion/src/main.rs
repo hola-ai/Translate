@@ -33,25 +33,29 @@ fn decode_file(path: &str) {
     }
 }
 
-/// egui ships without Chinese glyphs; borrow a system font if one exists.
+/// egui ships without Korean or Chinese glyphs; borrow the system fonts that
+/// exist, Korean first so Hangul takes its shapes from a Korean font.
 fn add_cjk_font(ctx: &egui::Context) {
     const CANDIDATES: &[&str] = &[
+        r"C:\Windows\Fonts\malgun.ttf",
         r"C:\Windows\Fonts\msyh.ttc",
-        r"C:\Windows\Fonts\msyh.ttf",
-        r"C:\Windows\Fonts\simhei.ttf",
-        r"C:\Windows\Fonts\simsun.ttc",
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
         "/System/Library/Fonts/PingFang.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
     ];
-    let Some(bytes) = CANDIDATES.iter().find_map(|p| std::fs::read(p).ok()) else {
+    let found: Vec<Vec<u8>> = CANDIDATES.iter().filter_map(|p| std::fs::read(p).ok()).collect();
+    if found.is_empty() {
         return;
-    };
+    }
     let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert("cjk".into(), Arc::new(egui::FontData::from_owned(bytes)));
-    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-        fonts.families.entry(family).or_default().push("cjk".into());
+    for (i, bytes) in found.into_iter().enumerate() {
+        let name = format!("cjk{i}");
+        fonts.font_data.insert(name.clone(), Arc::new(egui::FontData::from_owned(bytes)));
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            fonts.families.entry(family).or_default().push(name.clone());
+        }
     }
     ctx.set_fonts(fonts);
 }

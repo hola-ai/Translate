@@ -1,6 +1,6 @@
 ## Interface: 16001, 120105
 ## Title: Translate
-## Notes: Chinese to English chat translation, paired with the Translate companion app.
+## Notes: English to Korean chat translation, paired with the Translate companion app.
 ## Author: cherryroots
 ## Version: 0.1.0
 ## IconTexture: Interface\AddOns\Translate\icon

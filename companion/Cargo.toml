@@ -2,7 +2,7 @@
 name = "translate-companion"
 version = "0.1.0"
 edition = "2021"
-description = "Reads the WoW chat log, translates Chinese chat to English, and shows it in an overlay."
+description = "Reads the WoW chat log, translates English chat to Korean, and shows it in an overlay."
 license = "MIT"
 
 [dependencies]

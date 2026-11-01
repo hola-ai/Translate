@@ -3,6 +3,7 @@
 //! [seq][len hi][len lo][text...][fletcher16 hi][fletcher16 lo] packed
 //! 3 bytes into 4 six-bit blocks.
 
+use crate::translate::Direction;
 use crate::worker::{Job, UiEvent, UiSender};
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -39,16 +40,70 @@ pub enum Decoded {
 }
 
 /// Maps a channel value to one of the four levels the addon draws (0, 85, 170, 255).
-fn level(v: u8) -> u8 {
-    ((v as u16 + 42) / 85).min(3) as u8
+fn level(v: f32) -> u8 {
+    ((v + 42.0) / 85.0).min(3.0) as u8
 }
 
-fn symbol(img: &RgbaImage, x: u32, y: u32) -> Option<u8> {
+/// The pixel's channels, or None outside the image.
+fn pixel(img: &RgbaImage, x: u32, y: u32) -> Option<[f32; 3]> {
     if x >= img.width() || y >= img.height() {
         return None;
     }
     let p = img.get_pixel(x, y).0;
-    Some(level(p[0]) * 16 + level(p[1]) * 4 + level(p[2]))
+    Some([p[0] as f32, p[1] as f32, p[2] as f32])
+}
+
+/// Reads a sync color using only on/off per channel, which survives a display
+/// color profile that shifts the four levels into each other.
+fn sync_symbol(img: &RgbaImage, x: u32, y: u32) -> Option<u8> {
+    let [r, g, b] = pixel(img, x, y)?;
+    let on = |v: f32| if v >= 128.0 { 3 } else { 0 };
+    Some(on(r) * 16 + on(g) * 4 + on(b))
+}
+
+fn to_linear(v: f32) -> f32 {
+    (v / 255.0).powi(2)
+}
+
+fn invert(m: [[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
+    let cofactor = |r: usize, c: usize| {
+        let (r1, r2, c1, c2) = ((r + 1) % 3, (r + 2) % 3, (c + 1) % 3, (c + 2) % 3);
+        m[r1][c1] * m[r2][c2] - m[r1][c2] * m[r2][c1]
+    };
+    let det = m[0][0] * cofactor(0, 0) + m[0][1] * cofactor(0, 1) + m[0][2] * cofactor(0, 2);
+    if det.abs() < 1e-3 {
+        return None;
+    }
+    let mut inverse = [[0.0; 3]; 3];
+    for (r, row) in inverse.iter_mut().enumerate() {
+        for (c, value) in row.iter_mut().enumerate() {
+            *value = cofactor(c, r) / det;
+        }
+    }
+    Some(inverse)
+}
+
+/// Screen capture returns pixels in the display's color space, so a wide-gamut
+/// monitor mixes the channels: on one Dell, magenta (255, 0, 255) reads back as
+/// (233, 54, 248). The sync blocks are known colors, so they reveal how each
+/// channel was mixed, and undoing that mix recovers the colors the addon drew.
+fn calibration(sync: [[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
+    let [magenta, cyan, yellow] = sync.map(|p| p.map(to_linear));
+    let mut primaries = [[0.0; 3]; 3];
+    for (channel, row) in primaries.iter_mut().enumerate() {
+        let (m, c, y) = (magenta[channel], cyan[channel], yellow[channel]);
+        *row = [(m + y - c) / 2.0, (c + y - m) / 2.0, (m + c - y) / 2.0];
+    }
+    invert(primaries)
+}
+
+fn symbol(inverse: &[[f32; 3]; 3], pixel: [f32; 3]) -> u8 {
+    let linear = pixel.map(to_linear);
+    let channel = |row: [f32; 3]| {
+        let mixed = row[0] * linear[0] + row[1] * linear[1] + row[2] * linear[2];
+        level(mixed.max(0.0).sqrt() * 255.0)
+    };
+    channel(inverse[0]) * 16 + channel(inverse[1]) * 4 + channel(inverse[2])
 }
 
 fn fletcher16(bytes: &[u8]) -> u16 {
@@ -61,17 +116,30 @@ fn fletcher16(bytes: &[u8]) -> u16 {
 }
 
 pub fn decode(img: &RgbaImage, lock: Lock) -> Decoded {
+    let center = |i: usize| {
+        (
+            lock.x + (i % COLS) as u32 * lock.block + lock.block / 2,
+            lock.y + (i / COLS) as u32 * lock.block + lock.block / 2,
+        )
+    };
+    let mut sync = [[0.0; 3]; 3];
+    for (i, expected) in SYNC.iter().enumerate() {
+        let (cx, cy) = center(i);
+        if sync_symbol(img, cx, cy) != Some(*expected) {
+            return Decoded::Missing;
+        }
+        sync[i] = pixel(img, cx, cy).expect("sync_symbol found the pixel");
+    }
+    let Some(inverse) = calibration(sync) else {
+        return Decoded::Missing;
+    };
     let mut symbols = Vec::with_capacity(COLS * ROWS);
     for i in 0..COLS * ROWS {
-        let cx = lock.x + (i % COLS) as u32 * lock.block + lock.block / 2;
-        let cy = lock.y + (i / COLS) as u32 * lock.block + lock.block / 2;
-        match symbol(img, cx, cy) {
-            Some(s) => symbols.push(s),
+        let (cx, cy) = center(i);
+        match pixel(img, cx, cy) {
+            Some(p) => symbols.push(symbol(&inverse, p)),
             None => return Decoded::Missing,
         }
-    }
-    if symbols[..3] != SYNC {
-        return Decoded::Missing;
     }
     let mut bytes = Vec::with_capacity((symbols.len() - 3) / 4 * 3);
     for chunk in symbols[3..].chunks_exact(4) {
@@ -94,7 +162,7 @@ pub fn decode(img: &RgbaImage, lock: Lock) -> Decoded {
 
 /// Scans a whole image for the sync blocks and returns where the strip is.
 pub fn find(img: &RgbaImage) -> Option<Lock> {
-    let is = |x: u32, y: u32, s: u8| symbol(img, x, y) == Some(s);
+    let is = |x: u32, y: u32, s: u8| sync_symbol(img, x, y) == Some(s);
     for y in 0..img.height() {
         let mut x = 0;
         while x < img.width() {
@@ -134,6 +202,15 @@ pub fn parse_payload(text: &str) -> Option<(String, String)> {
     let speaker = parts.next()?.to_string();
     let message = parts.next()?.to_string();
     Some((speaker, message))
+}
+
+/// The addon marks text the player typed as `/tr <text>` with "@reply:<lang>"
+/// in the speaker field, so it is translated out of Korean instead of into it.
+pub fn reply_target(speaker: &str) -> Option<Direction> {
+    match speaker.strip_prefix("@reply:")? {
+        "zh" => Some(Direction::ToChinese),
+        _ => Some(Direction::ToEnglish),
+    }
 }
 
 /// Polls the screen: a full scan about once a second until the strip turns
@@ -198,7 +275,11 @@ pub fn spawn(jobs: Sender<Job>, ui: UiSender) {
                         // still new to the overlay, so it is shown too.
                         last_seen = Some((frame.seq, frame.checksum));
                         if let Some((speaker, text)) = parse_payload(&frame.text) {
-                            let _ = jobs.send(Job::Incoming { speaker, text });
+                            let job = match reply_target(&speaker) {
+                                Some(to) => Job::Reply { text, to },
+                                None => Job::Incoming { speaker, text },
+                            };
+                            let _ = jobs.send(job);
                         }
                     }
                 }
@@ -270,10 +351,43 @@ mod tests {
     }
 
     #[test]
+    fn reply_marker_picks_the_direction() {
+        assert_eq!(reply_target("@reply:en"), Some(Direction::ToEnglish));
+        assert_eq!(reply_target("@reply:zh"), Some(Direction::ToChinese));
+        assert_eq!(reply_target("[Say] Bob"), None);
+        assert_eq!(parse_payload("0\t@reply:zh\t멈춰"), Some(("@reply:zh".into(), "멈춰".into())));
+    }
+
+    #[test]
     fn rejects_damaged_frame() {
         let mut symbols = encode(1, "1\tA\t你好");
         symbols[10] ^= 1;
         let img = paint(&symbols, (0, 0), 3);
         assert_eq!(decode(&img, Lock { x: 0, y: 0, block: 3 }), Decoded::Corrupt);
+    }
+
+    /// Applies the mixing measured on a Dell AW3821DW to a frame.
+    fn through_wide_gamut_display(img: &mut RgbaImage) {
+        const MIX: [[f32; 3]; 3] = [[0.8375, 0.1625, 0.0], [0.046, 0.954, 0.0], [0.0125, 0.05, 0.933]];
+        for p in img.pixels_mut() {
+            let linear = [p.0[0], p.0[1], p.0[2]].map(|v| (v as f32 / 255.0).powf(2.2));
+            for (channel, row) in MIX.iter().enumerate() {
+                let mixed: f32 = row.iter().zip(linear).map(|(a, b)| a * b).sum();
+                p.0[channel] = (mixed.powf(0.5) * 255.0).round() as u8;
+            }
+        }
+    }
+
+    #[test]
+    fn decodes_through_a_display_color_profile() {
+        let text = "1\t[Say] Bob\tLFM ICC 25 need MT and heals PST 파티";
+        let mut img = paint(&encode(7, text), (10, 48), 4);
+        through_wide_gamut_display(&mut img);
+        assert!(img.get_pixel(10, 48).0[1] > 42, "the mix must push magenta's green past the first level");
+        let lock = find(&img).expect("strip found");
+        match decode(&img, lock) {
+            Decoded::Frame(frame) => assert_eq!(frame.text, text),
+            other => panic!("{other:?}"),
+        }
     }
 }

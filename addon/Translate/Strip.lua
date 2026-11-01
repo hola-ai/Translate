@@ -1,6 +1,6 @@
 local addonName, ns = ...
 
--- The pixel strip: the only live way out of the game. New Chinese lines are
+-- The pixel strip: the only live way out of the game. New English lines are
 -- drawn as a small grid of colored blocks that the companion app reads off
 -- the screen. Each block carries 6 bits: 4 brightness levels per channel,
 -- far enough apart that small color shifts still decode correctly.
@@ -16,6 +16,8 @@ local CAPACITY = math.floor((COLS * ROWS - #SYNC) / 4) * 3
 local MAX_TEXT = CAPACITY - 5
 local SHOW_TIME = 0.25 -- seconds each frame stays up; the app polls faster
 local MAX_QUEUE = 50
+-- The macOS menu bar stays on top of the game and would hide the strip at y = 0.
+local DEFAULT_Y = (IsMacClient and IsMacClient()) and 48 or 0
 
 ns.STRIP = { cols = COLS, rows = ROWS, block = BLOCK, maxText = MAX_TEXT }
 
@@ -73,7 +75,7 @@ function ns.PlaceStrip()
     local _, height = GetPhysicalScreenSize()
     frame:SetScale(768 / height)
     frame:ClearAllPoints()
-    frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+    frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", ns.db.stripX or 0, -(ns.db.stripY or DEFAULT_Y))
 end
 
 local function Build()
@@ -125,6 +127,13 @@ function ns.SetStripShown(shown)
     elseif frame then
         frame:Hide()
     end
+end
+
+-- Moves the strip, in physical pixels from the top-left corner of the screen.
+function ns.SetStripPosition(x, y)
+    ns.db.stripX, ns.db.stripY = x, y
+    if not frame then Build() end
+    ns.PlaceStrip()
 end
 
 ns.On("DISPLAY_SIZE_CHANGED", function() ns.PlaceStrip() end)

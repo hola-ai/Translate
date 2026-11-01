@@ -1,4 +1,5 @@
 use crate::config::{self, Config};
+use crate::translate::Direction;
 use crate::worker::{Job, UiEvent};
 use eframe::egui::{self, Color32, RichText, ViewportBuilder, ViewportCommand, ViewportId};
 use std::collections::VecDeque;
@@ -8,7 +9,7 @@ use std::sync::{Arc, Mutex};
 struct OverlayLine {
     speaker: String,
     original: String,
-    english: String,
+    translated: String,
 }
 
 pub struct TranslateApp {
@@ -64,32 +65,34 @@ impl TranslateApp {
         }
     }
 
+    fn push_line(&mut self, line: OverlayLine) {
+        self.lines.push_back(line);
+        while self.lines.len() > self.draft.max_lines.max(1) {
+            self.lines.pop_front();
+        }
+    }
+
     fn drain_events(&mut self) {
         while let Ok(event) = self.events.try_recv() {
             match event {
-                UiEvent::Line { speaker, original, english } => {
-                    self.lines.push_back(OverlayLine { speaker, original, english });
-                    while self.lines.len() > self.draft.max_lines.max(1) {
-                        self.lines.pop_front();
-                    }
+                UiEvent::Line { speaker, original, translated } => {
+                    self.push_line(OverlayLine { speaker, original, translated });
                 }
-                UiEvent::PasteReady { id, english } => {
-                    self.notice = format!("#{id} ready: press Ctrl+V in the addon window");
-                    self.lines.push_back(OverlayLine {
-                        speaker: format!("#{id}"),
-                        original: String::new(),
-                        english,
-                    });
+                UiEvent::PasteReady { id, translated } => {
+                    self.notice = format!("#{id} ready: paste it into the addon window");
+                    self.push_line(OverlayLine { speaker: format!("#{id}"), original: String::new(), translated });
                 }
-                UiEvent::ReplyReady { english, chinese } => {
-                    self.notice = format!("Copied \"{chinese}\" for \"{english}\". Paste it into WoW chat.");
+                UiEvent::ReplyReady { source, translated } => {
+                    self.notice = format!("Copied \"{translated}\" for \"{source}\". Paste it into WoW chat.");
+                    // The player is in the game, so the overlay says when the clipboard is ready.
+                    self.push_line(OverlayLine { speaker: "복사됨".into(), original: source, translated });
                 }
                 UiEvent::TestResult { result, seconds } => {
                     self.test_result = match result {
-                        Ok(english) if crate::text::has_chinese(&english) => {
-                            format!("The model answered but did not translate ({seconds:.1} s): {english}")
+                        Ok(korean) if !crate::text::has_hangul(&korean) => {
+                            format!("The model answered but did not translate ({seconds:.1} s): {korean}")
                         }
-                        Ok(english) => format!("Model works ({seconds:.1} s): {} -> {english}", crate::worker::TEST_LINE),
+                        Ok(korean) => format!("Model works ({seconds:.1} s): {} -> {korean}", crate::worker::TEST_LINE),
                         Err(e) => format!("Model test failed: {e}"),
                     };
                 }
@@ -162,10 +165,10 @@ impl TranslateApp {
             });
             ui.separator();
 
-            ui.label("Reply in Chinese (Enter copies the translation for pasting into WoW chat):");
+            ui.label("Reply in Korean (Enter copies the English translation for pasting into WoW chat):");
             let edit = ui.add(egui::TextEdit::singleline(&mut self.reply).desired_width(f32::INFINITY));
             if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.reply.trim().is_empty() {
-                let _ = self.interactive.send(Job::Reply { text: self.reply.trim().to_string() });
+                let _ = self.interactive.send(Job::Reply { text: self.reply.trim().to_string(), to: Direction::ToEnglish });
                 self.notice = "Translating your reply".into();
                 self.reply.clear();
                 edit.request_focus();
@@ -183,7 +186,7 @@ impl TranslateApp {
                 if ui.button("Clear overlay").clicked() {
                     self.lines.clear();
                 }
-                ui.checkbox(&mut self.draft.show_original, "Show Chinese too");
+                ui.checkbox(&mut self.draft.show_original, "Show English too");
                 ui.checkbox(&mut self.draft.hide_when_unfocused, "Hide when WoW is in the background");
             });
 
@@ -274,7 +277,7 @@ impl TranslateApp {
                 }
                 egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
                     for line in lines {
-                        let mut text = RichText::new(&line.english).size(draft.font_size).color(Color32::WHITE);
+                        let mut text = RichText::new(&line.translated).size(draft.font_size).color(Color32::WHITE);
                         if line.speaker.is_empty() {
                             text = text.italics();
                         }

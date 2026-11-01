@@ -1,10 +1,10 @@
-use crate::text::{has_chinese, parse_tagged};
+use crate::text::{has_hangul, parse_tagged};
 use crate::worker::{Job, UiEvent, UiSender};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::Duration;
 
-/// Owns the system clipboard. Watches for "TR#<id> <Chinese>" copied from the
+/// Owns the system clipboard. Watches for "TR#<id> <English>" copied from the
 /// addon window and writes replies that the player pastes back into the game.
 pub fn spawn(set_requests: Receiver<String>, jobs: Sender<Job>, ui: UiSender) {
     thread::spawn(move || {
@@ -36,7 +36,7 @@ pub fn spawn(set_requests: Receiver<String>, jobs: Sender<Job>, ui: UiSender) {
             }
             last = current.clone();
             if let Some((id, text)) = parse_tagged(&current) {
-                if has_chinese(text) {
+                if !has_hangul(text) {
                     let _ = jobs.send(Job::Tagged { id, text: text.to_string() });
                 }
             }

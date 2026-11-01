@@ -1,7 +1,7 @@
 local addonName, ns = ...
 
 -- The window: the original line (highlighted, ready for Ctrl+C) on top,
--- a paste box for the companion's English below, and the result under it.
+-- a paste box for the companion's Korean below, and the result under it.
 local window, sourceBox, pasteBox, resultText, titleText
 local currentId
 
@@ -54,7 +54,7 @@ local function Build()
 
     local hint1 = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint1:SetPoint("TOPLEFT", 14, -36)
-    hint1:SetText("1. Press Ctrl+C to copy this line")
+    hint1:SetText("1. Copy this line (Ctrl+C or Cmd+C)")
 
     sourceBox = MakeEditBox(window)
     sourceBox:SetPoint("TOPLEFT", 20, -50)
@@ -71,7 +71,7 @@ local function Build()
 
     local hint2 = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint2:SetPoint("TOPLEFT", 14, -82)
-    hint2:SetText("2. When the overlay says ready, click here and press Ctrl+V")
+    hint2:SetText("2. When the overlay says ready, click here and paste")
 
     pasteBox = MakeEditBox(window)
     pasteBox:SetPoint("TOPLEFT", 20, -96)
@@ -95,7 +95,7 @@ end
 function ns.ShowMessage(id)
     local entry = ns.messages[id]
     if not entry then
-        ns.Print("No Chinese chat lines captured yet.")
+        ns.Print("No English chat lines captured yet.")
         return
     end
     if not window then Build() end
