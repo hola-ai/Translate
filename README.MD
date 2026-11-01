@@ -167,6 +167,7 @@ Releases에 빌드가 있으므로 직접 빌드는 코드를 고칠 때만 필�
 | 번역이 점점 늦게 따라옴 | 거래 채널처럼 줄이 많음 | `/tr trade`로 끄기 |
 | 애드온이 구버전으로 표시 | 패치로 Interface 번호가 바뀜 | `Translate.toc`의 `## Interface:`에 현재 번호 추가 |
 | 오버레이 한글·한자가 네모로 나옴 | 글꼴을 못 찾음 | Mac은 AppleSDGothicNeo·PingFang, Windows는 malgun·msyh를 찾음. 없으면 `companion/src/main.rs`의 글꼴 목록에 경로 추가 |
+| 글자가 다른 글자 조각처럼 깨져 보임 (오버레이·앱 창 모두) | 몇 시간 뒤 GPU의 글꼴 텍스처가 어긋남 (macOS에서 한 번 관찰, 원인 미확인) | v0.2.1부터 앱이 글꼴 텍스처를 통째로 다시 올려 스스로 고침. 그래도 계속되면 앱 재시작 |
 
 ### 개발
 
