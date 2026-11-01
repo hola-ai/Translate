@@ -30,34 +30,81 @@ WoW 애드온은 인터넷에 접근할 수 없고 채팅 로그 파일도 실�
 
 ## 빠른 시작 (간단 버전)
 
-두 경우 모두 애드온 설치와 앱 실행은 같고, 번역 서버만 다릅니다. 앱은 [Releases](https://github.com/hola-ai/Translate/releases)에서 받거나 아래 "앱 빌드"대로 직접 빌드합니다.
+빌드는 필요 없습니다. [Releases](https://github.com/hola-ai/Translate/releases/latest)에 애드온과 OS별 앱이 올라와 있습니다. 순서는 받기 → 애드온 설치 → 앱 실행 → 번역 서버(A 또는 B)입니다.
+
+### 1. 받기
+
+| 파일 | 링크 |
+| --- | --- |
+| 애드온 | [Translate-addon.zip](https://github.com/hola-ai/Translate/releases/latest/download/Translate-addon.zip) |
+| Mac 앱 (Apple Silicon·Intel 공용) | [translate-companion-macos-universal](https://github.com/hola-ai/Translate/releases/latest/download/translate-companion-macos-universal) |
+| Windows 앱 | [translate-companion-windows-x64.exe](https://github.com/hola-ai/Translate/releases/latest/download/translate-companion-windows-x64.exe) |
+| Linux 앱 | [translate-companion-linux-x64](https://github.com/hola-ai/Translate/releases/latest/download/translate-companion-linux-x64) |
+
+### 2. 애드온 설치
+
+1. `Translate-addon.zip`을 풀면 `Translate` 폴더가 나옵니다.
+2. 그 폴더를 플레이하는 클라이언트의 `Interface/AddOns/` 안에 넣습니다. 넣고 나면 아래 파일이 있어야 합니다.
+   ```
+   리테일:  /Applications/World of Warcraft/_retail_/Interface/AddOns/Translate/Translate.toc
+   Forever: /Applications/World of Warcraft/_forever_/Interface/AddOns/Translate/Translate.toc
+   ```
+   Windows는 보통 `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\` 입니다.
+3. WoW를 켭니다. 이미 켜져 있었다면 캐릭터 선택 화면의 **애드온** 버튼에서 `Translate`가 체크되어 있는지 확인하고 접속합니다. 접속 후 `/tr help`를 쳐서 명령 목록이 나오면 설치된 것입니다.
+
+### 3. Mac 앱 실행
+
+1. 받은 `translate-companion-macos-universal`을 전용 폴더(예: `~/Translate/`)에 둡니다. 설정 파일 `config.json`이 그 옆에 생깁니다.
+2. 터미널에서 실행 권한을 주고 다운로드 격리를 풉니다. 한 번만 하면 됩니다. 이 빌드는 Apple 서명이 없어서 그냥 열면 macOS가 막습니다.
+   ```sh
+   cd ~/Translate
+   chmod +x translate-companion-macos-universal
+   xattr -d com.apple.quarantine translate-companion-macos-universal
+   ```
+   그래도 "확인할 수 없는 개발자" 경고가 뜨면 시스템 설정 → 개인정보 보호 및 보안 맨 아래의 **그래도 열기**를 누릅니다.
+3. 실행합니다. 게임을 하는 동안 이 터미널 창은 열어 둡니다.
+   ```sh
+   ./translate-companion-macos-universal
+   ```
+   처음에는 macOS가 **화면 기록** 권한을 묻습니다. 시스템 설정에서 허용한 뒤 `Ctrl+C`로 앱을 끄고 다시 실행합니다. 이 권한이 없으면 앱이 띠를 읽지 못합니다.
+4. **Translate companion** 창이 뜹니다. 위에서부터 이렇게 생겼습니다.
+   - 상태 줄: `Ready`
+   - 띠 상태 줄: `Looking for the pixel strip. In game, type /tr test.` — 게임에서 띠를 찾으면 `Reading the pixel strip on screen 1 at 0,48`로 바뀝니다.
+   - **Test model** 버튼 — 번역 서버 연결 확인.
+   - 한국어 답장 입력 칸 (`Reply in Korean ...`).
+   - 버튼 줄: **Unlock overlay to move it**, **Clear overlay**, 체크 상자 **Show English too**, **Hide when WoW is in the background**.
+   - 접힌 **Settings** — 누르면 API base URL, API key, Model, 오버레이 크기·불투명도·글자 크기 칸과 **Save settings** 버튼이 펼쳐집니다.
+
+   번역이 표시되는 **오버레이**는 별도의 반투명한 검은 상자인데, 기본 설정에서는 WoW가 앞에 있을 때만 보입니다. 지금은 터미널이 앞이라 안 보이는 것이 정상입니다.
+5. **Settings**를 눌러 펼칩니다.
+   - 같은 Mac의 Ollama를 쓰면 기본값 그대로 둡니다 (아래 A).
+   - oMLX나 다른 서버를 쓰면 **API base URL**, **API key**, **Model**을 넣고 **Save settings**를 누릅니다 (아래 B).
+6. **Test model**을 누릅니다. 버튼 옆에 `Model works (… s): LFM ICC 25 need MT and heals PST -> 한국어 문장`이 나오면 서버 연결이 된 것입니다. Ollama는 첫 호출에 모델을 올리느라 몇 초 걸릴 수 있습니다. `Model test failed: ...`가 나오면 아래 문제 해결을 봅니다.
+7. **Unlock overlay to move it**을 누르면 오버레이가 파란 상자로 나타납니다. 끌어서 채팅창 옆 빈 곳에 놓고(왼쪽 위 띠는 가리지 않게), 크기나 글자는 Settings에서 조절한 뒤 같은 자리의 **Lock overlay**를 누릅니다. 잠그면 클릭이 게임으로 통과하고 위치가 저장됩니다.
+8. WoW(창 모드)로 돌아가 `/tr test`를 칩니다. 띠 상태 줄이 `Reading the pixel strip ...`로 바뀌고 오버레이에 한국어 한 줄이 뜨면 끝입니다. 이후 다른 플레이어의 영어 채팅이 자동으로 오버레이에 번역됩니다.
+
+Windows는 `.exe`를 더블클릭하면 같은 창이 뜹니다 (SmartScreen 경고는 **추가 정보 → 실행**). 5번부터 같습니다.
 
 ### A. Ollama — 같은 Mac에서 모델을 돌릴 때
 
-1. [Ollama](https://ollama.com/download)를 설치하고(`brew install --cask ollama`도 됩니다) 모델을 받습니다. 한 번만 하면 되고 이후 오프라인으로 동작합니다.
-   ```sh
-   ollama pull hf.co/tencent/HY-MT1.5-7B-GGUF:Q4_K_M     # 4.6GB, 권장
-   ollama pull hf.co/tencent/HY-MT1.5-1.8B-GGUF:Q4_K_M   # 메모리가 적을 때
-   ```
-2. 애드온을 복사합니다 (Forever는 `_forever_`).
-   ```sh
-   cp -R addon/Translate "/Applications/World of Warcraft/_retail_/Interface/AddOns/"
-   ```
-3. 앱을 실행합니다. 기본 설정이 Ollama(`http://localhost:11434/v1`, 모델 `hf.co/tencent/HY-MT1.5-7B-GGUF:Q4_K_M`)라서 Settings를 바꿀 필요가 없습니다. 1.8B를 받았다면 Model만 그 이름으로 바꿉니다. **Test model**을 눌러 한국어 문장이 나오면 서버는 끝입니다. 화면 기록 권한을 물으면 허용합니다.
-4. 게임에서 `/tr test`. 앱에 `Reading the pixel strip on screen 1 at 0,48`이 뜨고 오버레이에 한국어가 나오면 됩니다.
+[Ollama](https://ollama.com/download)를 설치하고(`brew install --cask ollama`도 됩니다) 모델을 받습니다. 한 번만 하면 되고 이후 오프라인으로 동작합니다.
+
+```sh
+ollama pull hf.co/tencent/HY-MT1.5-7B-GGUF:Q4_K_M     # 4.6GB, 권장
+ollama pull hf.co/tencent/HY-MT1.5-1.8B-GGUF:Q4_K_M   # 메모리가 적을 때
+```
+
+앱의 기본 설정이 Ollama(`http://localhost:11434/v1`, 모델 `hf.co/tencent/HY-MT1.5-7B-GGUF:Q4_K_M`)라서 Settings를 바꾸지 않아도 됩니다. 1.8B를 받았다면 Model만 그 이름으로 바꾸고 **Save settings**를 누릅니다. Ollama 앱이 켜져 있어야 합니다.
 
 ### B. oMLX — 다른 Mac에서 모델을 돌릴 때
 
-1. 서버 Mac의 [oMLX](https://github.com/jundot/omlx) 관리 화면(`http://<서버>:8000/admin`)에서 `mlx-community/HY-MT1.5-7B-8bit`를 받고 API 키를 만듭니다. 두 Mac은 같은 네트워크(또는 Tailscale)에 있어야 합니다.
-2. 애드온을 복사합니다 (A의 2번과 같습니다).
-3. 앱을 실행하고 **Settings**에 API base URL `http://<서버>:8000/v1`, API key, Model `HY-MT1.5-7B-8bit`를 넣고 **Save settings** → **Test model**.
-4. 게임에서 `/tr test`.
+서버 Mac의 [oMLX](https://github.com/jundot/omlx) 관리 화면(`http://<서버>:8000/admin`)에서 `mlx-community/HY-MT1.5-7B-8bit`를 받고 API 키를 만듭니다. 두 Mac은 같은 네트워크(또는 Tailscale)에 있어야 합니다. 앱의 Settings에는 API base URL `http://<서버>:8000/v1`, API key, Model `HY-MT1.5-7B-8bit`를 넣습니다.
 
 ## 자세한 사용법
 
 ### 애드온 설치
 
-`addon/Translate` 폴더를 플레이하는 클라이언트의 AddOns 폴더에 넣습니다. 파일이 `Translate` 폴더 안에 들어가야 합니다.
+Releases의 `Translate-addon.zip`을 푼 `Translate` 폴더(저장소에서는 `addon/Translate`)를 플레이하는 클라이언트의 AddOns 폴더에 넣습니다. 파일이 `Translate` 폴더 안에 들어가야 합니다.
 
 ```
 리테일:  World of Warcraft/_retail_/Interface/AddOns/Translate/
@@ -68,7 +115,7 @@ Forever: World of Warcraft/_forever_/Interface/AddOns/Translate/
 
 ### 앱 빌드
 
-Rust를 설치한 뒤 `companion/`에서 빌드합니다. macOS에서는 `cargo build --release` 한 줄이면 되고, 결과는 `target/release/translate-companion`입니다. Linux는 `.github/workflows/build.yml`에 적힌 PipeWire, X11, Wayland 개발 패키지가 필요합니다.
+Releases에 빌드가 있으므로 직접 빌드는 코드를 고칠 때만 필요합니다. Rust를 설치한 뒤 `companion/`에서 빌드합니다. macOS에서는 `cargo build --release` 한 줄이면 되고, 결과는 `target/release/translate-companion`입니다. Linux는 `.github/workflows/build.yml`에 적힌 PipeWire, X11, Wayland 개발 패키지가 필요합니다.
 
 앱은 설정을 실행 파일 옆 `config.json`에 씁니다. API 키가 평문으로 들어가므로 이 파일은 공유하지 않습니다 (`.gitignore`에 있습니다). 처음 실행하면 macOS가 화면 기록 권한을 묻습니다. 빌드를 받아 쓰는 경우 `chmod +x`와 `xattr -d com.apple.quarantine`이 필요할 수 있습니다.
 
