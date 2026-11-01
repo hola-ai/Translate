@@ -1,6 +1,6 @@
 [package]
 name = "translate-companion"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Reads the WoW chat log, translates English chat to Korean, and shows it in an overlay."
 license = "MIT"
